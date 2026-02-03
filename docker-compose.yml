@@ -17,5 +17,14 @@ services:
     volumes:
       - influxdb_data:/var/lib/influxdb2
 
+  api:
+    build: ./api  # Docker va construire l'image à partir de ton Dockerfile
+    container_name: api_composteur
+    restart: always
+    ports:
+      - "3000:3000"
+    depends_on:
+      - mqtt
+
 volumes:
   influxdb_data:

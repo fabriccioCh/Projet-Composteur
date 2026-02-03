@@ -6,3 +6,5 @@ projet(composteur connecté) :
 -BDD(InfluxDB) : Stockage des données timeseries - valeurs des capteurs avec timestamp, Optimiséé pour les données temporelles : insertion rapide et requêtes analytiques efficaces, Idéal pour suivre l'évolution des relevés en temps réel.
 -Ngix : Serveur proxy pour gérer les requêtes vers l'API, Sécurise les communications avec HTTPS et bloque les requêtes malveillantes.
 -Conteneur Docker : Hébergement les services - API, bdd, site web sur une machine virtuelle, Déployés sur un serveur cloud DigitalOcean pour assurer l'accessibilité, Sécurisés avec des certificats SSL et régulièrement mis à jour et Géré via Docker Compose pour simplifier le déploiement et la maintenance. 
+
+Fin projet
