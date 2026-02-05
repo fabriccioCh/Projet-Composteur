@@ -6,9 +6,11 @@ const app = express();
 const port = 3000;
 
 // --- CONFIGURATION INFLUXDB ---
-const token = '3yOnuNRs6GGE7Bi_yv9W6_1RnLuYMZBdS1nj6zUXK2ZqUUyiqBZAfQqfoHcv5PTliW2Cy-w1aDBSAZJHyqusOQ==';
-const org = 'lycee';
-const bucket = 'composteur_data';
+require('dotenv').config();
+
+const token = process.env.token_bd;
+const org = process.env.influx_org;
+const bucket = process.env.influx_bucket;
 const clientDB = new InfluxDB({ url: 'http://influx_db:8086', token: token });
 const writeApi = clientDB.getWriteApi(org, bucket);
 
