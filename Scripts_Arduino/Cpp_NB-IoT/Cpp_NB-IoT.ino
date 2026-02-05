@@ -72,5 +72,5 @@ void loop() {
   mqttClient.print(jsonPayload);
   mqttClient.endMessage();
 
-  delay(30000); 
+  delay(5000); 
 }

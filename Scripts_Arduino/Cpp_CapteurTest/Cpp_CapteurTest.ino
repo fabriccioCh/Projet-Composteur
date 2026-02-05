@@ -34,5 +34,5 @@ void loop() {
   Serial.println(" hPa");
   Serial.println("---------------------------");
 
-  delay(5000); // mesure toutes les 2 secondes
+  delay(5000); 
 }

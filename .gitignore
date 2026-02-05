@@ -1,0 +1,8 @@
+# Dossier d'images personnelles
+Images/
+
+# Fichiers texte avec des mots de passe
+*.txt
+
+# Fichiers de configuration Docker locaux (si besoin)
+.env
