@@ -54,14 +54,12 @@ void loop() {
   // On lit les valeurs
   float t = bme.readTemperature();
   float h = bme.readHumidity();
-  float p = bme.readPressure() / 100.0F;
 
   // On crée le message JSON manuellement pour maîtriser les virgules
   // String(valeur, 2) force exactement 2 chiffres après la virgule
   String jsonPayload = "{";
   jsonPayload += "\"temperature\":" + String(t, 2) + ",";
   jsonPayload += "\"humidite\":" + String(h, 2) + ",";
-  jsonPayload += "\"pression\":" + String(p, 2);
   jsonPayload += "}";
 
   // Publication
