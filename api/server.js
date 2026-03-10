@@ -34,7 +34,7 @@ mqttClient.on('connect', () => {
 mqttClient.on('message', (topic, message) => {
     try {
         const data = JSON.parse(message.toString());
-        data.timestamp = new Date().toLocaleString("fr-FR");
+        data.timestamp = new Date().toLocaleString("fr-FR", { timeZone: "Europe/Paris" });
         lastData = data;
 
         // --- ENREGISTREMENT DANS LA BASE ---
