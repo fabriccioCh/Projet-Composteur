@@ -1,0 +1,12 @@
+{
+  "name": "api-composteur",
+  "version": "1.0.0",
+  "main": "server.js",
+  "dependencies": {
+    "@influxdata/influxdb-client": "^1.33.2",
+    "cors": "^2.8.6",
+    "dotenv": "^16.0.0",
+    "express": "^4.18.2",
+    "mqtt": "^4.3.7"
+  }
+}

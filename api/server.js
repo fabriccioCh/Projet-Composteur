@@ -1,0 +1,85 @@
+const express = require('express');
+const cors = require('cors');
+const mqtt = require('mqtt');
+const { InfluxDB, Point } = require('@influxdata/influxdb-client');
+require('dotenv').config();
+
+const app = express();
+const port = 3000;
+
+app.use(cors({
+  origin: 'http://localhost:5500'
+}));
+
+// --- CONFIGURATION INFLUXDB ---
+const token = process.env.token_bd;
+const org = process.env.influx_org;
+const bucket = process.env.influx_bucket;
+
+const clientDB = new InfluxDB({ url: 'http://influx_db:8086', token: token });
+const writeApi = clientDB.getWriteApi(org, bucket);
+// ON CRÉE LE QUERY API ICI :
+const queryApi = clientDB.getQueryApi(org);
+
+let lastData = { temperature: "...", humidite: "..." };
+
+// --- CONNEXION MQTT ---
+const mqttClient = mqtt.connect('mqtt://mqtt_broker:1883');
+
+mqttClient.on('connect', () => {
+    console.log("Connecté au broker MQTT");
+    mqttClient.subscribe('composteur/capteur');
+});
+
+mqttClient.on('message', (topic, message) => {
+    try {
+        const data = JSON.parse(message.toString());
+        data.timestamp = new Date().toLocaleString("fr-FR");
+        lastData = data;
+
+        // --- ENREGISTREMENT DANS LA BASE ---
+        const point = new Point('mesures')
+            .floatField('temp', data.temperature)
+            .floatField('hum', data.humidite)
+        
+        writeApi.writePoint(point);
+        // On force l'écriture immédiate
+        writeApi.flush();
+        
+        console.log("Enregistré dans InfluxDB : ", data);
+    } catch (e) {
+        console.error("Erreur de format JSON reçu");
+    }
+});
+
+// --- ROUTES API ---
+
+// 1. Dernier point (pour l'affichage direct)
+app.get('/api/last', (req, res) => res.json(lastData));
+
+// 2. Historique (pour les graphiques des camarades)
+app.get('/api/history', (req, res) => {
+    // Utilisation de la variable 'bucket' dynamique
+    const fluxQuery = `
+        from(bucket: "${bucket}")
+        |> range(start: -12h)
+        |> filter(fn: (r) => r["_measurement"] == "mesures")
+        |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+    `;
+
+    const results = [];
+    queryApi.queryRows(fluxQuery, {
+        next(row, tableMeta) {
+            results.push(tableMeta.toObject(row));
+        },
+        error(error) {
+            console.error("Erreur InfluxDB Query:", error);
+            res.status(500).json({ error: "Erreur lors de la lecture InfluxDB" });
+        },
+        complete() {
+            res.json(results);
+        },
+    });
+});
+
+app.listen(port, () => console.log(`API lancée sur le port ${port}`));

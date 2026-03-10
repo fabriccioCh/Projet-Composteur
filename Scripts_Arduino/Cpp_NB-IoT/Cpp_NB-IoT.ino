@@ -51,18 +51,15 @@ void setup() {
 void loop() {
   mqttClient.poll();
 
-  // On lit les valeurs
   float t = bme.readTemperature();
   float h = bme.readHumidity();
 
-  // On crée le message JSON manuellement pour maîtriser les virgules
-  // String(valeur, 2) force exactement 2 chiffres après la virgule
+  // On construit le JSON sans virgule à la fin
   String jsonPayload = "{";
   jsonPayload += "\"temperature\":" + String(t, 2) + ",";
-  jsonPayload += "\"humidite\":" + String(h, 2) + ",";
+  jsonPayload += "\"humidite\":" + String(h, 2); 
   jsonPayload += "}";
 
-  // Publication
   Serial.print("Envoi des données : ");
   Serial.println(jsonPayload);
   
