@@ -26,5 +26,12 @@ services:
     depends_on:
       - mqtt
 
+  fronted:
+    build: ./web
+    container: site_composteur
+    ports:
+      - "80:80"
+    restart: always
+
 volumes:
   influxdb_data:

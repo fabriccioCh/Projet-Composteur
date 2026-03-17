@@ -18,7 +18,6 @@ const bucket = process.env.influx_bucket;
 
 const clientDB = new InfluxDB({ url: 'http://influx_db:8086', token: token });
 const writeApi = clientDB.getWriteApi(org, bucket);
-// ON CRÉE LE QUERY API ICI :
 const queryApi = clientDB.getQueryApi(org);
 
 let lastData = { temperature: "...", humidite: "..." };

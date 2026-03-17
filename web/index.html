@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Composteur Connecté</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Librairie pour les graphiques -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 0;
+    }
+
+    header {
+      background: #2e7d32;
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .container {
+      padding: 20px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+
+    .value {
+      font-size: 32px;
+      font-weight: bold;
+      margin: 10px 0;
+      color: #2e7d32;
+    }
+
+    .graphs {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    footer {
+      text-align: center;
+      padding: 10px;
+      color: #777;
+    }
+
+    button {
+      padding: 10px 15px;
+      background: #2e7d32;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #1b5e20;
+    }
+
+    canvas {
+      margin-top: 10px;
+      height: 220px !important;
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  <h1>🌱 Composteur Connecté</h1>
+  <p>Interface de surveillance</p>
+</header>
+
+<div class="container">
+
+  <div class="card">
+    <h2>🌡️ Température</h2>
+    <div class="value" id="temperature">-- °C</div>
+  </div>
+
+  <div class="card">
+    <h2>💧 Humidité</h2>
+    <div class="value" id="humidite">-- %</div>
+  </div>
+
+  <div class="card">
+    <h2>⚙️ Actions</h2>
+    <button onclick="refreshData()">Actualiser les données</button>
+  </div>
+
+  <div class="graphs">
+
+    <div class="card">
+      <h2>📊 Historique Température</h2>
+      <canvas id="tempChart"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>📊 Historique Humidité</h2>
+      <canvas id="humidChart"></canvas>
+    </div>
+
+  </div>
+
+</div>
+
+<footer>
+  Projet IoT – Composteur Connecté
+</footer>
+
+<script>
+let labels = [];
+let tempHistory = [];
+let humidHistory = [];
+
+const tempCtx = document.getElementById('tempChart').getContext('2d');
+const humidCtx = document.getElementById('humidChart').getContext('2d');
+
+const tempChart = new Chart(tempCtx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [{
+      label: 'Température (°C)',
+      data: [],
+      borderColor: '#2e7d32',
+      backgroundColor: 'rgba(46,125,50,0.2)',
+      tension: 0.3
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: { y: { beginAtZero: true } }
+  }
+});
+
+const humidChart = new Chart(humidCtx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [{
+      label: 'Humidité (%)',
+      data: [],
+      borderColor: '#0277bd',
+      backgroundColor: 'rgba(2,119,189,0.2)',
+      tension: 0.3
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: { y: { beginAtZero: true } }
+  }
+});
+
+async function refreshData() {
+  try {
+    // Dernière valeur
+    const responseLast = await fetch("http://167.99.87.179:3000/api/last");
+    const lastData = await responseLast.json();
+    const temp = lastData.temp ?? lastData.temperature ?? "--";
+    const hum = lastData.hum ?? lastData.humidity ?? lastData.humidite ?? "--";
+
+    document.getElementById("temperature").textContent = temp + " °C";
+    document.getElementById("humidite").textContent = hum + " %";
+
+    // Historique complet
+    const responseHist = await fetch("http://167.99.87.179:3000/api/history");
+    const history = await responseHist.json();
+
+    // labels format HH:MM pour l'axe X
+    labels = history.map(item => {
+      const d = new Date(item.timestamp);
+      const hh = String(d.getHours()).padStart(2,'0');
+      const mm = String(d.getMinutes()).padStart(2,'0');
+      return `${hh}:${mm}`;
+    });
+
+    tempHistory = history.map(item => item.temp ?? item.temperature ?? 0);
+    humidHistory = history.map(item => item.hum ?? item.humidity ?? item.humidite ?? 0);
+
+    // mise à jour graphiques
+    tempChart.data.labels = labels;
+    tempChart.data.datasets[0].data = tempHistory;
+
+    humidChart.data.labels = labels;
+    humidChart.data.datasets[0].data = humidHistory;
+
+    tempChart.update();
+    humidChart.update();
+
+  } catch(error) {
+    console.error("Erreur récupération API :", error);
+  }
+}
+
+refreshData();
+setInterval(refreshData, 5000);
+</script>
+
+</body>
+</html>
