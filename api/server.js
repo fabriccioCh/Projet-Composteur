@@ -7,9 +7,7 @@ require('dotenv').config();
 const app = express();
 const port = 3000;
 
-app.use(cors({
-  origin: 'http://localhost:5500'
-}));
+app.use(cors());
 
 // --- CONFIGURATION INFLUXDB ---
 const token = process.env.token_bd;
@@ -18,6 +16,7 @@ const bucket = process.env.influx_bucket;
 
 const clientDB = new InfluxDB({ url: 'http://influx_db:8086', token: token });
 const writeApi = clientDB.getWriteApi(org, bucket);
+// ON CRÉE LE QUERY API ICI :
 const queryApi = clientDB.getQueryApi(org);
 
 let lastData = { temperature: "...", humidite: "..." };
@@ -58,11 +57,12 @@ app.get('/api/last', (req, res) => res.json(lastData));
 
 // 2. Historique (pour les graphiques des camarades)
 app.get('/api/history', (req, res) => {
-    // Utilisation de la variable 'bucket' dynamique
+    // Requête Flux modifiée pour tout récupérer
     const fluxQuery = `
         from(bucket: "${bucket}")
-        |> range(start: -12h)
+        |> range(start: 0) // <--- '0' signifie "depuis le début de la base"
         |> filter(fn: (r) => r["_measurement"] == "mesures")
+        |> filter(fn: (r) => r["_field"] == "temp" or r["_field"] == "hum")
         |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
     `;
 
@@ -80,5 +80,8 @@ app.get('/api/history', (req, res) => {
         },
     });
 });
+// --- DÉMARRAGE DU SERVEUR ---
+app.listen(port, () => {
+    console.log(`✅ Serveur API lancé sur http://localhost:${port}`);
+});
 
-app.listen(port, () => console.log(`API lancée sur le port ${port}`));
