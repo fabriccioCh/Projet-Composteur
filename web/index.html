@@ -5,76 +5,97 @@
   <title>Composteur Connecté</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- Librairie pour les graphiques -->
+  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+  <!-- Plugin zoom -->
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f4f6f8;
-      margin: 0;
-      padding: 0;
-    }
+    body { font-family: Arial; background:#f4f6f8; margin:0; }
 
     header {
-      background: #2e7d32;
-      color: white;
-      padding: 20px;
-      text-align: center;
+      background:#2e7d32;
+      color:white;
+      padding:20px;
+      text-align:center;
     }
 
     .container {
-      padding: 20px;
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-      gap: 20px;
+      padding:20px;
+      display:grid;
+      grid-template-columns: repeat(4,1fr);
+      gap:20px;
     }
 
     .card {
-      background: white;
-      border-radius: 10px;
-      padding: 20px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-      text-align: center;
+      background:white;
+      border-radius:10px;
+      padding:20px;
+      box-shadow:0 4px 10px rgba(0,0,0,0.1);
+      text-align:center;
     }
 
     .value {
-      font-size: 32px;
-      font-weight: bold;
-      margin: 10px 0;
-      color: #2e7d32;
+      font-size:30px;
+      font-weight:bold;
+      color:#2e7d32;
     }
 
     .graphs {
-      grid-column: 1 / -1;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-    }
-
-    footer {
-      text-align: center;
-      padding: 10px;
-      color: #777;
+      grid-column:1 / -1;
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:20px;
     }
 
     button {
-      padding: 10px 15px;
-      background: #2e7d32;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
+      padding:10px;
+      background:#2e7d32;
+      color:white;
+      border:none;
+      border-radius:5px;
+      cursor:pointer;
     }
 
-    button:hover {
-      background: #1b5e20;
+    button:disabled { background:#aaa; }
+
+    .switch {
+      display:inline-block;
+      width:55px;
+      height:28px;
+      position:relative;
+      margin:10px;
     }
 
-    canvas {
-      margin-top: 10px;
-      height: 220px !important;
+    .switch input { display:none; }
+
+    .slider {
+      position:absolute;
+      background:#ccc;
+      border-radius:30px;
+      inset:0;
+      cursor:pointer;
     }
+
+    .slider:before {
+      content:"";
+      position:absolute;
+      height:22px;
+      width:22px;
+      left:3px;
+      bottom:3px;
+      background:white;
+      border-radius:50%;
+      transition:0.3s;
+    }
+
+    input:checked + .slider { background:#ff9800; }
+    input:checked + .slider:before { transform:translateX(26px); }
+
+    canvas { height:220px !important; }
+
+    footer { text-align:center; padding:10px; color:#777; }
   </style>
 </head>
 
@@ -82,7 +103,6 @@
 
 <header>
   <h1>🌱 Composteur Connecté</h1>
-  <p>Interface de surveillance</p>
 </header>
 
 <div class="container">
@@ -98,39 +118,72 @@
   </div>
 
   <div class="card">
-    <h2>⚙️ Actions</h2>
-    <button onclick="refreshData()">Actualiser les données</button>
+    <h2>🔁 Mode</h2>
+
+    <label class="switch">
+      <input type="checkbox" id="modeSwitch">
+      <span class="slider"></span>
+    </label>
+
+    <p id="modeLabel">AUTO</p>
+
+    <button id="waterBtn" disabled onclick="arroser()">
+      💦 Arroser
+    </button>
+  </div>
+
+  <div class="card">
+    <h2>🔄 Données</h2>
+    <button onclick="refreshData()">Actualiser</button>
   </div>
 
   <div class="graphs">
-
     <div class="card">
       <h2>📊 Historique Température</h2>
       <canvas id="tempChart"></canvas>
     </div>
-
     <div class="card">
       <h2>📊 Historique Humidité</h2>
       <canvas id="humidChart"></canvas>
     </div>
-
   </div>
 
 </div>
 
-<footer>
-  Projet IoT – Composteur Connecté
-</footer>
+<footer>Projet IoT</footer>
 
 <script>
 let labels = [];
 let tempHistory = [];
 let humidHistory = [];
 
-const tempCtx = document.getElementById('tempChart').getContext('2d');
-const humidCtx = document.getElementById('humidChart').getContext('2d');
+let interval;
+let waterInterval;
+let autoMode = true;
 
-const tempChart = new Chart(tempCtx, {
+const switchEl = document.getElementById("modeSwitch");
+const labelEl = document.getElementById("modeLabel");
+const waterBtn = document.getElementById("waterBtn");
+
+/* CONFIG ZOOM */
+const zoomOptions = {
+  pan: {
+    enabled: true,
+    mode: 'x'
+  },
+  zoom: {
+    wheel: {
+      enabled: true
+    },
+    pinch: {
+      enabled: true
+    },
+    mode: 'x'
+  }
+};
+
+/* GRAPHIQUES */
+const tempChart = new Chart(document.getElementById('tempChart'), {
   type: 'line',
   data: {
     labels: [],
@@ -143,13 +196,13 @@ const tempChart = new Chart(tempCtx, {
     }]
   },
   options: {
-    responsive: true,
-    maintainAspectRatio: false,
-    scales: { y: { beginAtZero: true } }
+    plugins: {
+      zoom: zoomOptions
+    }
   }
 });
 
-const humidChart = new Chart(humidCtx, {
+const humidChart = new Chart(document.getElementById('humidChart'), {
   type: 'line',
   data: {
     labels: [],
@@ -162,55 +215,104 @@ const humidChart = new Chart(humidCtx, {
     }]
   },
   options: {
-    responsive: true,
-    maintainAspectRatio: false,
-    scales: { y: { beginAtZero: true } }
+    plugins: {
+      zoom: zoomOptions
+    }
   }
 });
 
+/* API DATA */
 async function refreshData() {
   try {
-    // Dernière valeur
-    const responseLast = await fetch("http://167.99.87.179:3000/api/last");
-    const lastData = await responseLast.json();
-    const temp = lastData.temp ?? lastData.temperature ?? "--";
-    const hum = lastData.hum ?? lastData.humidity ?? lastData.humidite ?? "--";
+    const resLast = await fetch("http://167.99.87.179:3000/api/last");
+    const last = await resLast.json();
 
-    document.getElementById("temperature").textContent = temp + " °C";
-    document.getElementById("humidite").textContent = hum + " %";
+    // On s'assure de matcher EXACTEMENT les clés de server.js
+    document.getElementById("temperature").textContent = (last.temperature !== undefined ? last.temperature : "--") + " °C";
+    document.getElementById("humidite").textContent = (last.humidite !== undefined ? last.humidite : "--") + " %";
 
-    // Historique complet
-    const responseHist = await fetch("http://167.99.87.179:3000/api/history");
-    const history = await responseHist.json();
+    const resHist = await fetch("http://167.99.87.179:3000/api/history");
+    const history = await resHist.json();
 
-    // labels format HH:MM pour l'axe X
-    labels = history.map(item => {
-      const d = new Date(item.timestamp);
-      const hh = String(d.getHours()).padStart(2,'0');
-      const mm = String(d.getMinutes()).padStart(2,'0');
-      return `${hh}:${mm}`;
-    });
+    if (history.length > 0) {
+      labels = history.map(i => {
+        const d = new Date(i._time);
+        return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+      });
 
-    tempHistory = history.map(item => item.temp ?? item.temperature ?? 0);
-    humidHistory = history.map(item => item.hum ?? item.humidity ?? item.humidite ?? 0);
+      // Utilise exactement les noms de champs InfluxDB
+      tempHistory = history.map(i => i.temperature ?? 0);
+      humidHistory = history.map(i => i.humidite ?? 0);
 
-    // mise à jour graphiques
-    tempChart.data.labels = labels;
-    tempChart.data.datasets[0].data = tempHistory;
+      tempChart.data.labels = labels;
+      tempChart.data.datasets[0].data = tempHistory;
+      humidChart.data.labels = labels;
+      humidChart.data.datasets[0].data = humidHistory;
 
-    humidChart.data.labels = labels;
-    humidChart.data.datasets[0].data = humidHistory;
+      tempChart.update();
+      humidChart.update();
+    }
+  } catch(e) {
+    console.error("Erreur API :", e);
+  }
+}
+       
 
-    tempChart.update();
-    humidChart.update();
+/* MODE */
+function updateMode() {
+  autoMode = !switchEl.checked;
 
-  } catch(error) {
-    console.error("Erreur récupération API :", error);
+  if (autoMode) {
+    labelEl.textContent = "AUTO";
+    waterBtn.disabled = true;
+
+    interval = setInterval(refreshData, 5000);
+    waterInterval = setInterval(arroser, 30000);
+
+  } else {
+    labelEl.textContent = "MANUEL";
+    waterBtn.disabled = false;
+
+    clearInterval(interval);
+    clearInterval(waterInterval);
   }
 }
 
+switchEl.addEventListener("change", updateMode);
+
+/* ARROSAGE */
+async function arroser() {
+  const btn = document.getElementById("waterBtn");
+
+  if (!autoMode) {
+    btn.disabled = true;
+    btn.textContent = "Arrosage...";
+  }
+
+  try {
+    await fetch("http://167.99.87.179:3000/api/water", {
+      method: "POST"
+    });
+
+    if (!autoMode) btn.textContent = "✔ Arrosé";
+
+  } catch {
+    if (!autoMode) btn.textContent = "Erreur ❌";
+  }
+
+  if (!autoMode) {
+    setTimeout(() => {
+      btn.textContent = "💦 Arroser";
+      btn.disabled = false;
+    }, 2000);
+  }
+}
+
+/* INIT */
 refreshData();
-setInterval(refreshData, 5000);
+interval = setInterval(refreshData, 8000);
+waterInterval = null;
+
 </script>
 
 </body>

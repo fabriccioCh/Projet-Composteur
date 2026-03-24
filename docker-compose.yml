@@ -20,6 +20,8 @@ services:
   api:
     build: ./api  # Docker va construire l'image à partir de ton Dockerfile
     container_name: api_composteur
+    environment:
+      - TZ=Europe/Paris
     restart: always
     ports:
       - "3000:3000"
@@ -28,9 +30,11 @@ services:
 
   fronted:
     build: ./web
-    container: site_composteur
+    container_name: site_composteur
     ports:
       - "80:80"
+    volumes:
+      - ./web/nginx.conf:/etc/nginx/conf.d/default.conf
     restart: always
 
 volumes:

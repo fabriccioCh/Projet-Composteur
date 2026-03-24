@@ -6,3 +6,5 @@ Images/
 
 # Fichiers de configuration Docker locaux (si besoin)
 .env
+node_modules/
+*.log

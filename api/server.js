@@ -7,9 +7,9 @@ require('dotenv').config();
 const app = express();
 const port = 3000;
 
-app.use(cors({
-  origin: 'http://localhost:5500'
-}));
+// IMPORTANT : Configuration pour lire le JSON envoyé par le bouton du site
+app.use(cors());
+app.use(express.json()); 
 
 // --- CONFIGURATION INFLUXDB ---
 const token = process.env.token_bd;
@@ -20,48 +20,57 @@ const clientDB = new InfluxDB({ url: 'http://influx_db:8086', token: token });
 const writeApi = clientDB.getWriteApi(org, bucket);
 const queryApi = clientDB.getQueryApi(org);
 
-let lastData = { temperature: "...", humidite: "..." };
+let lastData = {
+    temperature: "--",
+    humidite: "--",
+    timestamp: "--"
+};
 
 // --- CONNEXION MQTT ---
 const mqttClient = mqtt.connect('mqtt://mqtt_broker:1883');
 
 mqttClient.on('connect', () => {
-    console.log("Connecté au broker MQTT");
+    console.log("✅ Connecté au broker MQTT");
     mqttClient.subscribe('composteur/capteur');
 });
 
 mqttClient.on('message', (topic, message) => {
     try {
-        const data = JSON.parse(message.toString());
-        data.timestamp = new Date().toLocaleString("fr-FR", { timeZone: "Europe/Paris" });
-        lastData = data;
+        const rawPayload = message.toString();
+        console.log("📥 MQTT Brut reçu :", rawPayload); // <--- AJOUTE ÇA POUR VOIR
+        
+        const data = JSON.parse(rawPayload);
+        
+        // On s'assure que les noms correspondent à ce que le FRONT-END attend
+        const cleanData = {
+            temperature: data.temperature || 0,
+            humidite: data.humidite || 0, // Vérifie si ton index.html attend "humidity" !
+            timestamp: new Date().toLocaleTimeString("fr-FR")
+        };
+        
+        lastData = cleanData;
 
-        // --- ENREGISTREMENT DANS LA BASE ---
         const point = new Point('mesures')
-            .floatField('temp', data.temperature)
-            .floatField('hum', data.humidite)
+            .floatField('temperature', cleanData.temperature)
+            .floatField('humidite', cleanData.humidite);
         
         writeApi.writePoint(point);
-        // On force l'écriture immédiate
         writeApi.flush();
         
-        console.log("Enregistré dans InfluxDB : ", data);
+        console.log("💾 Données reçues et stockées :", cleanData);
     } catch (e) {
-        console.error("Erreur de format JSON reçu");
+        console.error("❌ Erreur lors de la réception MQTT :", e.message);
     }
 });
 
-// --- ROUTES API ---
+// --- ROUTES GET (Lecture) ---
 
-// 1. Dernier point (pour l'affichage direct)
 app.get('/api/last', (req, res) => res.json(lastData));
 
-// 2. Historique (pour les graphiques des camarades)
 app.get('/api/history', (req, res) => {
-    // Utilisation de la variable 'bucket' dynamique
     const fluxQuery = `
         from(bucket: "${bucket}")
-        |> range(start: -12h)
+        |> range(start: -24h)
         |> filter(fn: (r) => r["_measurement"] == "mesures")
         |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
     `;
@@ -73,7 +82,7 @@ app.get('/api/history', (req, res) => {
         },
         error(error) {
             console.error("Erreur InfluxDB Query:", error);
-            res.status(500).json({ error: "Erreur lors de la lecture InfluxDB" });
+            res.status(500).json({ error: "Erreur DB" });
         },
         complete() {
             res.json(results);
@@ -81,4 +90,27 @@ app.get('/api/history', (req, res) => {
     });
 });
 
-app.listen(port, () => console.log(`API lancée sur le port ${port}`));
+// --- NOUVELLES ROUTES POST (Action) ---
+
+// Route pour changer le mode (Auto / Manuel)
+app.post('/api/mode', (req, res) => {
+    console.log("📥 Mode reçu du site :", req.body);
+    // On relaie l'info à l'Arduino via MQTT
+    mqttClient.publish("composteur/mode", JSON.stringify(req.body));
+    res.json({ status: "ok", message: "Mode mis à jour" });
+});
+
+// Route pour déclencher l'arrosage
+app.post('/api/water', (req, res) => {
+    // On publie "water" SANS le retenir
+    mqttClient.publish('composteur/action', 'water', { qos: 1, retain: false }, (err) => {
+        if (err) {
+            return res.status(500).json({ error: "Erreur MQTT" });
+        }
+        res.json({ message: "Arrosage lancé" });
+    });
+});
+
+app.listen(port, () => {
+    console.log(`🚀 API complète lancée sur le port ${port}`);
+});
