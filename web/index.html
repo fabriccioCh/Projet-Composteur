@@ -152,168 +152,200 @@
 
 <footer>Projet IoT</footer>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
 <script>
+// --- VARIABLES GLOBALES ---
+let tempChart, humidChart;
 let labels = [];
 let tempHistory = [];
 let humidHistory = [];
+let autoMode = false;
 
-let interval;
-let waterInterval;
-let autoMode = true;
+// INITIALISATION DU WEB SOCKET
+const socket = io("http://167.99.87.179:3000");
 
+// Sélection des éléments HTML
 const switchEl = document.getElementById("modeSwitch");
 const labelEl = document.getElementById("modeLabel");
 const waterBtn = document.getElementById("waterBtn");
 
-/* CONFIG ZOOM */
-const zoomOptions = {
-  pan: {
-    enabled: true,
-    mode: 'x'
-  },
-  zoom: {
-    wheel: {
-      enabled: true
-    },
-    pinch: {
-      enabled: true
-    },
-    mode: 'x'
-  }
-};
+// --- 1. FONCTIONS D'INITIALISATION ---
 
-/* GRAPHIQUES */
-const tempChart = new Chart(document.getElementById('tempChart'), {
-  type: 'line',
-  data: {
-    labels: [],
-    datasets: [{
-      label: 'Température (°C)',
-      data: [],
-      borderColor: '#2e7d32',
-      backgroundColor: 'rgba(46,125,50,0.2)',
-      tension: 0.3
-    }]
-  },
-  options: {
-    plugins: {
-      zoom: zoomOptions
+// Fonction pour créer les graphiques proprement au démarrage
+function initCharts() {
+    const zoomOptions = { 
+        pan: { enabled: true, mode: 'x' }, 
+        zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } 
+    };
+
+    // Graphique Température
+    const ctxTemp = document.getElementById('tempChart');
+    if (ctxTemp) {
+        tempChart = new Chart(ctxTemp, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Température (°C)',
+                    data: [],
+                    borderColor: '#2e7d32',
+                    backgroundColor: 'rgba(46,125,50,0.2)',
+                    tension: 0.3
+                }]
+            },
+            options: { plugins: { zoom: zoomOptions } }
+        });
     }
-  }
-});
 
-const humidChart = new Chart(document.getElementById('humidChart'), {
-  type: 'line',
-  data: {
-    labels: [],
-    datasets: [{
-      label: 'Humidité (%)',
-      data: [],
-      borderColor: '#0277bd',
-      backgroundColor: 'rgba(2,119,189,0.2)',
-      tension: 0.3
-    }]
-  },
-  options: {
-    plugins: {
-      zoom: zoomOptions
+    // Graphique Humidité
+    const ctxHumid = document.getElementById('humidChart');
+    if (ctxHumid) {
+        humidChart = new Chart(ctxHumid, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Humidité (%)',
+                    data: [],
+                    borderColor: '#0277bd',
+                    backgroundColor: 'rgba(2,119,189,0.2)',
+                    tension: 0.3
+                }]
+            },
+            options: { plugins: { zoom: zoomOptions } }
+        });
     }
-  }
-});
-
-/* API DATA */
-async function refreshData() {
-  try {
-    const resLast = await fetch("http://167.99.87.179:3000/api/last");
-    const last = await resLast.json();
-
-    // On s'assure de matcher EXACTEMENT les clés de server.js
-    document.getElementById("temperature").textContent = (last.temperature !== undefined ? last.temperature : "--") + " °C";
-    document.getElementById("humidite").textContent = (last.humidite !== undefined ? last.humidite : "--") + " %";
-
-    const resHist = await fetch("http://167.99.87.179:3000/api/history");
-    const history = await resHist.json();
-
-    if (history.length > 0) {
-      labels = history.map(i => {
-        const d = new Date(i._time);
-        return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-      });
-
-      // Utilise exactement les noms de champs InfluxDB
-      tempHistory = history.map(i => i.temperature ?? 0);
-      humidHistory = history.map(i => i.humidite ?? 0);
-
-      tempChart.data.labels = labels;
-      tempChart.data.datasets[0].data = tempHistory;
-      humidChart.data.labels = labels;
-      humidChart.data.datasets[0].data = humidHistory;
-
-      tempChart.update();
-      humidChart.update();
-    }
-  } catch(e) {
-    console.error("Erreur API :", e);
-  }
-}
-       
-
-/* MODE */
-function updateMode() {
-  autoMode = !switchEl.checked;
-
-  if (autoMode) {
-    labelEl.textContent = "AUTO";
-    waterBtn.disabled = true;
-
-    interval = setInterval(refreshData, 5000);
-    waterInterval = setInterval(arroser, 30000);
-
-  } else {
-    labelEl.textContent = "MANUEL";
-    waterBtn.disabled = false;
-
-    clearInterval(interval);
-    clearInterval(waterInterval);
-  }
 }
 
-switchEl.addEventListener("change", updateMode);
+// Récupérer le mode actuel du serveur au chargement
+async function initMode() {
+    try {
+        const response = await fetch("http://167.99.87.179:3000/api/mode");
+        const data = await response.json();
+        console.log("📍 État initial récupéré :", data.mode);
+        applyModeUpdate(data.mode);
+    } catch (e) {
+        console.error("Erreur init mode:", e);
+    }
+}
 
-/* ARROSAGE */
-async function arroser() {
-  const btn = document.getElementById("waterBtn");
+// Mettre à jour l'interface visuelle
+function applyModeUpdate(mode) {
+    autoMode = (mode === "AUTO");
+    if (switchEl) switchEl.checked = autoMode;
+    if (labelEl) labelEl.textContent = mode;
+    if (waterBtn) {
+        waterBtn.disabled = autoMode;
+        waterBtn.style.opacity = autoMode ? "0.5" : "1";
+    }
+}
 
-  if (!autoMode) {
-    btn.disabled = true;
-    btn.textContent = "Arrosage...";
-  }
+// --- 2. RÉCEPTION WEBSOCKET (TEMPS RÉEL) ---
 
-  try {
-    await fetch("http://167.99.87.179:3000/api/water", {
-      method: "POST"
+socket.on("updateData", (data) => {
+    console.log("📥 Donnée capteur reçue:", data);
+    const tempEl = document.getElementById("temperature");
+    const humEl = document.getElementById("humidite");
+    
+    if (tempEl) tempEl.textContent = (data.temperature ?? "--") + " °C";
+    if (humEl) humEl.textContent = (data.humidite ?? "--") + " %";
+    
+    refreshHistory(); // On rafraîchit les graphiques à chaque nouvelle donnée
+});
+
+socket.on("updateMode", (data) => {
+    console.log("🔄 Synchro reçue du serveur:", data.mode);
+    applyModeUpdate(data.mode);
+});
+
+socket.on("wateringStatus", (data) => {
+    if (!waterBtn) return;
+    if (data.active) {
+        waterBtn.disabled = true;
+        waterBtn.textContent = "Arrosage en cours...";
+    } else {
+        waterBtn.textContent = "💦 Arroser";
+        if (!autoMode) waterBtn.disabled = false;
+    }
+});
+
+// --- 3. GESTION DE L'HISTORIQUE ---
+
+async function refreshHistory() {
+    try {
+        const resHist = await fetch("http://167.99.87.179:3000/api/history");
+        const history = await resHist.json();
+
+        // Sécurité : on vérifie que les graphiques existent avant de les modifier
+        if (!tempChart || !humidChart) return;
+
+        if (history && history.length > 0) {
+            labels = history.map(i => {
+                const d = new Date(i._time);
+                return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+            });
+
+            tempHistory = history.map(i => i.temperature ?? 0);
+            humidHistory = history.map(i => i.humidite ?? 0);
+
+            // Mise à jour graphique Température
+            tempChart.data.labels = labels;
+            tempChart.data.datasets[0].data = tempHistory;
+            tempChart.update('none'); 
+
+            // Mise à jour graphique Humidité
+            humidChart.data.labels = labels;
+            humidChart.data.datasets[0].data = humidHistory;
+            humidChart.update('none');
+        }
+    } catch(e) {
+        console.error("❌ Erreur lors de la récupération de l'historique :", e);
+    }
+}
+
+// --- 4. ÉVÉNEMENTS (BOUTONS) ---
+
+if (switchEl) {
+    switchEl.addEventListener("change", async () => {
+        const newMode = switchEl.checked ? "AUTO" : "MANUEL";
+        try {
+            await fetch("http://167.99.87.179:3000/api/mode", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ mode: newMode })
+            });
+        } catch (e) {
+            console.error("Erreur envoi mode:", e);
+        }
     });
-
-    if (!autoMode) btn.textContent = "✔ Arrosé";
-
-  } catch {
-    if (!autoMode) btn.textContent = "Erreur ❌";
-  }
-
-  if (!autoMode) {
-    setTimeout(() => {
-      btn.textContent = "💦 Arroser";
-      btn.disabled = false;
-    }, 2000);
-  }
 }
 
-/* INIT */
-refreshData();
-interval = setInterval(refreshData, 8000);
-waterInterval = null;
+async function arroser() {
+    if (autoMode || !waterBtn) return;
+    try {
+        await fetch("http://167.99.87.179:3000/api/water", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" }
+        });
+    } catch (err) {
+        console.error("Erreur clic arrosage:", err);
+    }
+}
 
+if (waterBtn) {
+    waterBtn.addEventListener("click", arroser);
+}
+
+// --- 5. LANCEMENT SÉCURISÉ ---
+// On utilise une fonction asynchrone pour respecter l'ordre
+async function startApp() {
+    initCharts();      // 1. On crée les graphiques vides
+    await initMode();  // 2. On récupère le mode actuel
+    await refreshHistory(); // 3. On charge les données passées
+}
+
+startApp();
 </script>
-
-</body>
-</html>

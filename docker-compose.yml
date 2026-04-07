@@ -27,6 +27,7 @@ services:
       - "3000:3000"
     depends_on:
       - mqtt
+      - influxdb
 
   fronted:
     build: ./web
@@ -36,6 +37,8 @@ services:
     volumes:
       - ./web/nginx.conf:/etc/nginx/conf.d/default.conf
     restart: always
+    depends_on:
+      - api
 
 volumes:
   influxdb_data:
