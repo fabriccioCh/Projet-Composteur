@@ -3,23 +3,30 @@ const cors = require('cors');
 const mqtt = require('mqtt');
 const { InfluxDB, Point } = require('@influxdata/influxdb-client');
 const http = require('http');
-const { Server } = require('socket.io');
 require('dotenv').config();
 
 const app = express();
 const port = 3000;
 
+// 1. CONFIGURATION DU SERVEUR ET SOCKET.IO
 const server = http.createServer(app); 
-const io = new Server(server, {
-    cors: {
-        origin: "*", 
-        methods: ["GET", "POST"]
-    }
+const io = require('socket.io')(server, {
+  cors: {
+    origin: "https://composteur.cielnewton.fr",
+    methods: ["GET", "POST"]
+  }
 });
 
 app.use(cors());
 app.use(express.json()); 
 
+// 2. CONFIGURATION MQTT (UNE SEULE FOIS AVEC AUTHENTIFICATION)
+const mqttClient = mqtt.connect('mqtt://mqtt_broker:1883', {
+  username: 'compost_user',
+  password: 'nEwton92@comPost'
+});
+
+// 3. CONFIGURATION INFLUXDB
 const token = process.env.token_bd;
 const org = process.env.influx_org;
 const bucket = process.env.influx_bucket;
@@ -27,14 +34,18 @@ const clientDB = new InfluxDB({ url: 'http://influx_db:8086', token: token });
 const writeApi = clientDB.getWriteApi(org, bucket);
 const queryApi = clientDB.getQueryApi(org);
 
+// 4. LOGIQUE DES VARIABLES D'ÉTAT
 let lastData = { temperature: "--", humidite: "--", timestamp: "--" };
 let currentMode = "MANUEL"; 
 
-const mqttClient = mqtt.connect('mqtt://mqtt_broker:1883');
-
+// 5. GESTION DES ÉVÉNEMENTS MQTT
 mqttClient.on('connect', () => {
-    console.log("✅ Connecté au broker MQTT");
+    console.log("✅ API connectée au broker MQTT avec succès !");
     mqttClient.subscribe('composteur/capteur');
+});
+
+mqttClient.on('error', (err) => {
+    console.error("❌ Erreur de connexion MQTT :", err);
 });
 
 mqttClient.on('message', (topic, message) => {
@@ -55,13 +66,13 @@ mqttClient.on('message', (topic, message) => {
         writeApi.flush();
         console.log("📥 Donnée diffusée :", cleanData);
     } catch (e) {
-        console.error("❌ Erreur MQTT :", e.message);
+        console.error("❌ Erreur traitement message MQTT :", e.message);
     }
 });
 
+// 6. ROUTES API
 app.get('/api/last', (req, res) => res.json(lastData));
 
-// --- CORRECTION ICI (Parenthèse fixée) ---
 app.get('/api/mode', (req, res) => {
     res.json({ mode: currentMode });
 });
@@ -97,6 +108,7 @@ app.post('/api/water', (req, res) => {
     });
 });
 
+// 7. GESTION DES SOCKETS (TEMPS RÉEL)
 io.on('connection', (socket) => {
     console.log(`🔌 Client connecté : ${socket.id}`);
     socket.emit("updateMode", { mode: currentMode });

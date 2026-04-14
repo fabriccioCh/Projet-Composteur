@@ -4,98 +4,33 @@
   <meta charset="UTF-8">
   <title>Composteur Connecté</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-  <!-- Plugin zoom -->
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 
   <style>
-    body { font-family: Arial; background:#f4f6f8; margin:0; }
+    body { font-family: Arial, sans-serif; background:#f4f6f8; margin:0; }
+    header { background:#2e7d32; color:white; padding:20px; text-align:center; }
+    .container { padding:20px; display:grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap:20px; }
+    .card { background:white; border-radius:10px; padding:20px; box-shadow:0 4px 10px rgba(0,0,0,0.1); text-align:center; }
+    .value { font-size:30px; font-weight:bold; color:#2e7d32; }
+    .graphs { grid-column: 1 / -1; display:grid; grid-template-columns: 1fr 1fr; gap:20px; }
+    @media (max-width: 800px) { .graphs { grid-template-columns: 1fr; } }
+    
+    button { padding:10px 20px; background:#2e7d32; color:white; border:none; border-radius:5px; cursor:pointer; font-size: 16px; }
+    button:disabled { background:#aaa; cursor: not-allowed; }
 
-    header {
-      background:#2e7d32;
-      color:white;
-      padding:20px;
-      text-align:center;
-    }
-
-    .container {
-      padding:20px;
-      display:grid;
-      grid-template-columns: repeat(4,1fr);
-      gap:20px;
-    }
-
-    .card {
-      background:white;
-      border-radius:10px;
-      padding:20px;
-      box-shadow:0 4px 10px rgba(0,0,0,0.1);
-      text-align:center;
-    }
-
-    .value {
-      font-size:30px;
-      font-weight:bold;
-      color:#2e7d32;
-    }
-
-    .graphs {
-      grid-column:1 / -1;
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:20px;
-    }
-
-    button {
-      padding:10px;
-      background:#2e7d32;
-      color:white;
-      border:none;
-      border-radius:5px;
-      cursor:pointer;
-    }
-
-    button:disabled { background:#aaa; }
-
-    .switch {
-      display:inline-block;
-      width:55px;
-      height:28px;
-      position:relative;
-      margin:10px;
-    }
-
+    /* --- STYLE DU SWITCH --- */
+    .switch { display:inline-block; width:60px; height:34px; position:relative; margin:10px; }
     .switch input { display:none; }
+    .slider { position:absolute; background:#ccc; border-radius:34px; inset:0; cursor:pointer; transition: 0.4s; }
+    .slider:before { content:""; position:absolute; height:26px; width:26px; left:4px; bottom:4px; background:white; border-radius:50%; transition:0.4s; }
 
-    .slider {
-      position:absolute;
-      background:#ccc;
-      border-radius:30px;
-      inset:0;
-      cursor:pointer;
-    }
-
-    .slider:before {
-      content:"";
-      position:absolute;
-      height:22px;
-      width:22px;
-      left:3px;
-      bottom:3px;
-      background:white;
-      border-radius:50%;
-      transition:0.3s;
-    }
-
-    input:checked + .slider { background:#ff9800; }
+    /* LOGIQUE : Quand c'est coché (droite), c'est le mode MANUEL (couleur orange) */
+    input:checked + .slider { background:#ff9800; } 
     input:checked + .slider:before { transform:translateX(26px); }
 
-    canvas { height:220px !important; }
-
-    footer { text-align:center; padding:10px; color:#777; }
+    canvas { height:250px !important; }
+    footer { text-align:center; padding:20px; color:#777; }
   </style>
 </head>
 
@@ -106,7 +41,6 @@
 </header>
 
 <div class="container">
-
   <div class="card">
     <h2>🌡️ Température</h2>
     <div class="value" id="temperature">-- °C</div>
@@ -118,23 +52,22 @@
   </div>
 
   <div class="card">
-    <h2>🔁 Mode</h2>
-
+    <h2>🔁 Mode de Gestion</h2>
+    <div>
+      <span id="modeLabel" style="font-weight: bold; font-size: 18px;">--</span>
+    </div>
     <label class="switch">
       <input type="checkbox" id="modeSwitch">
       <span class="slider"></span>
     </label>
-
-    <p id="modeLabel">AUTO</p>
-
-    <button id="waterBtn" disabled onclick="arroser()">
-      💦 Arroser
-    </button>
+    <div style="margin-top:10px;">
+        <button id="waterBtn" disabled>💦 Arroser</button>
+    </div>
   </div>
 
   <div class="card">
-    <h2>🔄 Données</h2>
-    <button onclick="refreshData()">Actualiser</button>
+    <h2>🔄 Actualisation</h2>
+    <button id="refreshBtn">Actualiser les graphes</button>
   </div>
 
   <div class="graphs">
@@ -147,205 +80,118 @@
       <canvas id="humidChart"></canvas>
     </div>
   </div>
-
 </div>
 
-<footer>Projet IoT</footer>
+<footer>Projet BTS IoT</footer>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 
 <script>
-// --- VARIABLES GLOBALES ---
 let tempChart, humidChart;
-let labels = [];
-let tempHistory = [];
-let humidHistory = [];
 let autoMode = false;
 
-// INITIALISATION DU WEB SOCKET
-const socket = io("http://167.99.87.179:3000");
-
-// Sélection des éléments HTML
+const socket = io("https://composteur.cielnewton.fr");
 const switchEl = document.getElementById("modeSwitch");
 const labelEl = document.getElementById("modeLabel");
 const waterBtn = document.getElementById("waterBtn");
+const refreshBtn = document.getElementById("refreshBtn");
 
-// --- 1. FONCTIONS D'INITIALISATION ---
-
-// Fonction pour créer les graphiques proprement au démarrage
-function initCharts() {
-    const zoomOptions = { 
-        pan: { enabled: true, mode: 'x' }, 
-        zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } 
-    };
-
-    // Graphique Température
-    const ctxTemp = document.getElementById('tempChart');
-    if (ctxTemp) {
-        tempChart = new Chart(ctxTemp, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Température (°C)',
-                    data: [],
-                    borderColor: '#2e7d32',
-                    backgroundColor: 'rgba(46,125,50,0.2)',
-                    tension: 0.3
-                }]
-            },
-            options: { plugins: { zoom: zoomOptions } }
-        });
-    }
-
-    // Graphique Humidité
-    const ctxHumid = document.getElementById('humidChart');
-    if (ctxHumid) {
-        humidChart = new Chart(ctxHumid, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Humidité (%)',
-                    data: [],
-                    borderColor: '#0277bd',
-                    backgroundColor: 'rgba(2,119,189,0.2)',
-                    tension: 0.3
-                }]
-            },
-            options: { plugins: { zoom: zoomOptions } }
-        });
-    }
-}
-
-// Récupérer le mode actuel du serveur au chargement
-async function initMode() {
-    try {
-        const response = await fetch("http://167.99.87.179:3000/api/mode");
-        const data = await response.json();
-        console.log("📍 État initial récupéré :", data.mode);
-        applyModeUpdate(data.mode);
-    } catch (e) {
-        console.error("Erreur init mode:", e);
-    }
-}
-
-// Mettre à jour l'interface visuelle
 function applyModeUpdate(mode) {
-    autoMode = (mode === "AUTO");
-    if (switchEl) switchEl.checked = autoMode;
+    console.log("🎨 Sync Interface :", mode);
+    
+    // Si mode est MANUEL, on coche le switch (droite)
+    // Si mode est AUTO, on décoche le switch (gauche)
+    if (switchEl) {
+        switchEl.checked = (mode === "MANUEL");
+    }
+    
     if (labelEl) labelEl.textContent = mode;
+
+    autoMode = (mode === "AUTO");
     if (waterBtn) {
         waterBtn.disabled = autoMode;
         waterBtn.style.opacity = autoMode ? "0.5" : "1";
     }
 }
 
-// --- 2. RÉCEPTION WEBSOCKET (TEMPS RÉEL) ---
-
-socket.on("updateData", (data) => {
-    console.log("📥 Donnée capteur reçue:", data);
-    const tempEl = document.getElementById("temperature");
-    const humEl = document.getElementById("humidite");
-    
-    if (tempEl) tempEl.textContent = (data.temperature ?? "--") + " °C";
-    if (humEl) humEl.textContent = (data.humidite ?? "--") + " %";
-    
-    refreshHistory(); // On rafraîchit les graphiques à chaque nouvelle donnée
-});
-
-socket.on("updateMode", (data) => {
-    console.log("🔄 Synchro reçue du serveur:", data.mode);
-    applyModeUpdate(data.mode);
-});
-
-socket.on("wateringStatus", (data) => {
-    if (!waterBtn) return;
-    if (data.active) {
-        waterBtn.disabled = true;
-        waterBtn.textContent = "Arrosage en cours...";
-    } else {
-        waterBtn.textContent = "💦 Arroser";
-        if (!autoMode) waterBtn.disabled = false;
-    }
-});
-
-// --- 3. GESTION DE L'HISTORIQUE ---
+function initCharts() {
+    const config = (label, color, bgColor) => ({
+        type: 'line',
+        data: { labels: [], datasets: [{ label, data: [], borderColor: color, backgroundColor: bgColor, tension: 0.3, fill: true }] },
+        options: { responsive: true, maintainAspectRatio: false }
+    });
+    tempChart = new Chart(document.getElementById('tempChart'), config('Température (°C)', '#2e7d32', 'rgba(46,125,50,0.1)'));
+    humidChart = new Chart(document.getElementById('humidChart'), config('Humidité (%)', '#0277bd', 'rgba(2,119,189,0.1)'));
+}
 
 async function refreshHistory() {
     try {
-        const resHist = await fetch("http://167.99.87.179:3000/api/history");
-        const history = await resHist.json();
-
-        // Sécurité : on vérifie que les graphiques existent avant de les modifier
-        if (!tempChart || !humidChart) return;
-
+        const res = await fetch("https://composteur.cielnewton.fr/api/history");
+        const history = await res.json();
         if (history && history.length > 0) {
-            labels = history.map(i => {
-                const d = new Date(i._time);
-                return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-            });
-
-            tempHistory = history.map(i => i.temperature ?? 0);
-            humidHistory = history.map(i => i.humidite ?? 0);
-
-            // Mise à jour graphique Température
+            const labels = history.map(i => new Date(i._time).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }));
             tempChart.data.labels = labels;
-            tempChart.data.datasets[0].data = tempHistory;
+            tempChart.data.datasets[0].data = history.map(i => i.temperature ?? 0);
             tempChart.update('none'); 
-
-            // Mise à jour graphique Humidité
             humidChart.data.labels = labels;
-            humidChart.data.datasets[0].data = humidHistory;
+            humidChart.data.datasets[0].data = history.map(i => i.humidite ?? 0);
             humidChart.update('none');
         }
-    } catch(e) {
-        console.error("❌ Erreur lors de la récupération de l'historique :", e);
-    }
+    } catch(e) { console.error("❌ Erreur historique :", e); }
 }
 
-// --- 4. ÉVÉNEMENTS (BOUTONS) ---
+async function initMode() {
+    try {
+        const response = await fetch("https://composteur.cielnewton.fr/api/mode");
+        const data = await response.json();
+        applyModeUpdate(data.mode);
+    } catch (e) { console.error("❌ Erreur init mode :", e); }
+}
+
+socket.on("updateData", (data) => {
+    document.getElementById("temperature").textContent = (data.temperature ?? "--") + " °C";
+    document.getElementById("humidite").textContent = (data.humidite ?? "--") + " %";
+    refreshHistory(); 
+});
+
+socket.on("updateMode", (data) => {
+    applyModeUpdate(data.mode);
+});
 
 if (switchEl) {
-    switchEl.addEventListener("change", async () => {
-        const newMode = switchEl.checked ? "AUTO" : "MANUEL";
+    switchEl.addEventListener("click", async (e) => {
+        e.preventDefault(); 
+        // Si le texte est MANUEL, on veut passer en AUTO
+        const nouveauMode = (labelEl.textContent.trim() === "MANUEL") ? "AUTO" : "MANUEL";
         try {
-            await fetch("http://167.99.87.179:3000/api/mode", {
+            await fetch("https://composteur.cielnewton.fr/api/mode", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ mode: newMode })
+                body: JSON.stringify({ mode: nouveauMode })
             });
-        } catch (e) {
-            console.error("Erreur envoi mode:", e);
-        }
+        } catch (err) { console.error("❌ Erreur envoi mode :", err); }
     });
 }
 
 async function arroser() {
     if (autoMode || !waterBtn) return;
     try {
-        await fetch("http://167.99.87.179:3000/api/water", {
+        await fetch("https://composteur.cielnewton.fr/api/water", {
             method: "POST",
             headers: { "Content-Type": "application/json" }
         });
-    } catch (err) {
-        console.error("Erreur clic arrosage:", err);
-    }
+    } catch (err) { console.error("❌ Erreur arrosage :", err); }
 }
 
-if (waterBtn) {
-    waterBtn.addEventListener("click", arroser);
-}
+if (waterBtn) waterBtn.addEventListener("click", arroser);
+if (refreshBtn) refreshBtn.addEventListener("click", refreshHistory);
 
-// --- 5. LANCEMENT SÉCURISÉ ---
-// On utilise une fonction asynchrone pour respecter l'ordre
 async function startApp() {
-    initCharts();      // 1. On crée les graphiques vides
-    await initMode();  // 2. On récupère le mode actuel
-    await refreshHistory(); // 3. On charge les données passées
+    initCharts();
+    await initMode();
+    await refreshHistory();
 }
-
 startApp();
 </script>
+</body>
+</html>
