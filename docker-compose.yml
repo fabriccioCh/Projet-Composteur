@@ -18,7 +18,7 @@ services:
       - influxdb_data:/var/lib/influxdb2
 
   api:
-    build: ./api  # Docker va construire l'image à partir de ton Dockerfile
+    build: ./api  
     container_name: api_composteur
     environment:
       - TZ=Europe/Paris
